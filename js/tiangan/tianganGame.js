@@ -27,7 +27,7 @@ export default class TianganGame {
   generateTiles() {
     const tileSet = [];
     
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 5; i++) {
       TIANGAN.forEach(tiangan => {
         tileSet.push({ type: 'tiangan', value: tiangan });
       });
@@ -38,7 +38,7 @@ export default class TianganGame {
 
     this.shuffleArray(tileSet);
     
-    const selectedTiles = tileSet.slice(0, 60);
+    const selectedTiles = tileSet.slice(0, 75);
     
     this.createMultiLayerTiles(selectedTiles);
   }
@@ -119,6 +119,12 @@ export default class TianganGame {
   }
 
   handleTouch(x, y) {
+    for (const tile of this.slotTiles) {
+      if (!tile.destroyed && !tile.moving && this.isSlotTileClicked(tile, x, y)) {
+        return;
+      }
+    }
+
     if (this.slotTiles.length >= this.slotCount) return;
 
     const topTiles = this.getTopTiles();
@@ -129,6 +135,15 @@ export default class TianganGame {
         break;
       }
     }
+  }
+
+  isSlotTileClicked(tile, x, y) {
+    return (
+      x >= tile.x - 3 &&
+      x <= tile.x + tile.width + 3 &&
+      y >= tile.y - 3 &&
+      y <= tile.y + tile.height + 3
+    );
   }
 
   moveTileToSlot(tile) {
@@ -146,38 +161,50 @@ export default class TianganGame {
 
     setTimeout(() => {
       this.checkAndEliminate();
-    }, 300);
+      this.rearrangeSlots();
+      this.checkGameState();
+    }, 350);
   }
 
   checkAndEliminate() {
-    const valueCount = {};
+    let foundMatch = true;
     
-    this.slotTiles.forEach(tile => {
-      if (!tile.destroyed) {
-        const key = `${tile.type}-${tile.value}`;
-        valueCount[key] = (valueCount[key] || 0) + 1;
-      }
-    });
-
-    for (const key in valueCount) {
-      if (valueCount[key] >= 3) {
-        const [type, value] = key.split('-');
-        let eliminated = 0;
-        
-        this.slotTiles.forEach(tile => {
-          if (!tile.destroyed && tile.type === type && tile.value === value && eliminated < 3) {
-            tile.destroy();
-            eliminated++;
-            this.score += 10;
-          }
-        });
-        
+    while (foundMatch) {
+      foundMatch = false;
+      const activeTiles = this.slotTiles.filter(t => !t.destroyed);
+      
+      if (activeTiles.length < 3) {
         break;
       }
+
+      const lastThree = activeTiles.slice(-3);
+      
+      if (this.isValidMatch(lastThree)) {
+        lastThree.forEach(tile => {
+          tile.destroy();
+          this.score += 10;
+        });
+        foundMatch = true;
+      }
+    }
+  }
+
+  isValidMatch(tiles) {
+    const tianganTiles = tiles.filter(t => t.type === 'tiangan');
+    const relationTiles = tiles.filter(t => t.type === 'relation');
+
+    if (tianganTiles.length !== 2 || relationTiles.length !== 1) {
+      return false;
     }
 
-    this.rearrangeSlots();
-    this.checkGameState();
+    const t1 = tianganTiles[0].value;
+    const t2 = tianganTiles[1].value;
+    const rel = relationTiles[0].value;
+
+    return (
+      (TianganRelations[t1] && TianganRelations[t1][rel] === t2) ||
+      (TianganRelations[t2] && TianganRelations[t2][rel] === t1)
+    );
   }
 
   rearrangeSlots() {
