@@ -12,6 +12,7 @@ export default class TianganGame {
     this.score = 0;
     this.aniId = 0;
     this.slotCount = 7;
+    this.gameEnded = false;
     this.init();
     this.bindEvents();
     this.loop();
@@ -21,6 +22,7 @@ export default class TianganGame {
     this.tiles = [];
     this.slotTiles = [];
     this.score = 0;
+    this.gameEnded = false;
     this.generateTiles();
   }
 
@@ -119,13 +121,19 @@ export default class TianganGame {
   }
 
   handleTouch(x, y) {
+    if (this.gameEnded) {
+      return;
+    }
+
+    if (this.slotTiles.filter(t => !t.destroyed).length >= this.slotCount) {
+      return;
+    }
+
     for (const tile of this.slotTiles) {
       if (!tile.destroyed && !tile.moving && this.isSlotTileClicked(tile, x, y)) {
         return;
       }
     }
-
-    if (this.slotTiles.length >= this.slotCount) return;
 
     const topTiles = this.getTopTiles();
     
@@ -223,10 +231,15 @@ export default class TianganGame {
   }
 
   checkGameState() {
+    if (this.gameEnded) {
+      return;
+    }
+
     const remainingActive = this.tiles.filter(t => !t.destroyed).length + 
                             this.slotTiles.filter(t => !t.destroyed).length;
 
     if (remainingActive === 0) {
+      this.gameEnded = true;
       wx.showModal({
         title: '恭喜通关',
         content: `得分: ${this.score}`,
@@ -236,6 +249,7 @@ export default class TianganGame {
         }
       });
     } else if (this.slotTiles.filter(t => !t.destroyed).length >= this.slotCount) {
+      this.gameEnded = true;
       wx.showModal({
         title: '游戏结束',
         content: `槽位已满！得分: ${this.score}`,
