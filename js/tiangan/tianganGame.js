@@ -270,14 +270,9 @@ export default class TianganGame {
     this.drawGrass();
 
     ctx.fillStyle = '#333';
-    ctx.font = 'bold 24px Arial';
+    ctx.font = 'bold 22px Arial';
     ctx.textAlign = 'center';
-    ctx.fillText('天干配对消消乐', canvas.width / 2, 40);
-
-    ctx.font = '18px Arial';
-    ctx.fillText(`得分: ${this.score}`, canvas.width / 2, 70);
-
-    this.drawSlots();
+    ctx.fillText('天干配对消消乐', canvas.width / 2, 50);
 
     const topTiles = this.getTopTiles();
     const sortedTiles = [...this.tiles].sort((a, b) => a.layer - b.layer);
@@ -286,6 +281,13 @@ export default class TianganGame {
       const isTop = topTiles.includes(tile);
       tile.render(ctx, isTop);
     });
+
+    this.drawSlots();
+
+    ctx.fillStyle = '#FF5722';
+    ctx.font = 'bold 28px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText(`得分: ${this.score}`, canvas.width / 2, canvas.height - 175);
 
     this.slotTiles.forEach(tile => {
       tile.render(ctx, true);
