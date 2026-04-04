@@ -47,7 +47,7 @@ export default class TianganGame {
 
   createMultiLayerTiles(tileData) {
     const centerX = canvas.width / 2;
-    const centerY = 220;
+    const centerY = 280;
     const layerOffset = 10;
     let index = 0;
 
