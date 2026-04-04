@@ -1,0 +1,114 @@
+.container {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  padding: 20rpx 30rpx;
+}
+
+.header {
+  text-align: center;
+  padding: 40rpx 0;
+}
+
+.title {
+  display: block;
+  font-size: 48rpx;
+  font-weight: bold;
+  color: #FFD700;
+  margin-bottom: 10rpx;
+}
+
+.subtitle {
+  display: block;
+  font-size: 28rpx;
+  color: rgba(255,255,255,0.8);
+}
+
+.loading, .error, .empty {
+  text-align: center;
+  padding: 100rpx 0;
+  color: #fff;
+  font-size: 32rpx;
+}
+
+.error {
+  color: #ffcccc;
+}
+
+.table-container {
+  background: rgba(255,255,255,0.95);
+  border-radius: 20rpx;
+  overflow: hidden;
+  box-shadow: 0 8rpx 32rpx rgba(0,0,0,0.2);
+}
+
+.table {
+  padding: 0 20rpx;
+}
+
+.header-row {
+  display: flex;
+  background: #667eea;
+  color: #fff;
+  font-weight: 600;
+  padding: 30rpx 10rpx;
+  font-size: 28rpx;
+}
+
+.row {
+  display: flex;
+  padding: 24rpx 10rpx;
+  border-bottom: 1rpx solid #eee;
+  font-size: 26rpx;
+}
+
+.row:last-child {
+  border-bottom: none;
+}
+
+.row:nth-child(even) {
+  background: #f9f9f9;
+}
+
+.col {
+  flex: 1;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.col.rank {
+  flex: 0 0 15%;
+}
+
+.col.nickname {
+  flex: 0 0 45%;
+}
+
+.col.score {
+  flex: 0 0 20%;
+}
+
+.col.time {
+  flex: 0 0 20%;
+  font-size: 22rpx;
+  color: #888;
+}
+
+.rank-1 .col.rank {
+  color: #FFD700;
+  font-weight: bold;
+  font-size: 32rpx;
+}
+
+.rank-2 .col.rank {
+  color: #C0C0C0;
+  font-weight: bold;
+  font-size: 32rpx;
+}
+
+.rank-3 .col.rank {
+  color: #CD7F32;
+  font-weight: bold;
+  font-size: 32rpx;
+}

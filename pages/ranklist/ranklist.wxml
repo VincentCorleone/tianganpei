@@ -1,0 +1,36 @@
+<view class="container">
+  <view class="header">
+    <text class="title">🏆 排行榜</text>
+    <text class="subtitle">贵人连连看</text>
+  </view>
+
+  <view wx:if="{{loading}}" class="loading">
+    <text>加载中...</text>
+  </view>
+
+  <view wx:elif="{{error}}" class="error">
+    <text>{{error}}</text>
+  </view>
+
+  <view wx:else class="table-container">
+    <view wx:if="{{leaderboard.length === 0}}" class="empty">
+      <text>暂无排行数据</text>
+    </view>
+
+    <view wx:else class="table">
+      <view class="header-row">
+        <text class="col rank">排名</text>
+        <text class="col nickname">昵称</text>
+        <text class="col score">分数</text>
+        <text class="col time">时间</text>
+      </view>
+
+      <view wx:for="{{leaderboard}}" wx:key="rank" class="row rank-{{item.rank}}">
+        <text class="col rank">{{item.rank}}</text>
+        <text class="col nickname">{{item.nickname}}</text>
+        <text class="col score">{{item.score}}</text>
+        <text class="col time">{{item.time}}</text>
+      </view>
+    </view>
+  </view>
+</view>
