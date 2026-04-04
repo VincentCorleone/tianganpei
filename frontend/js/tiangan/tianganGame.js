@@ -29,20 +29,37 @@ export default class TianganGame {
   generateTiles() {
     const tileSet = [];
     
-    for (let i = 0; i < 5; i++) {
-      TIANGAN.forEach(tiangan => {
-        tileSet.push({ type: 'tiangan', value: tiangan });
-      });
-      RELATIONS.forEach(relation => {
-        tileSet.push({ type: 'relation', value: relation });
-      });
+    // 生成完整的匹配组（每个组包含2个天干+1个关系，可以完全消除）
+    // 确保卡牌数量设为84张（28个匹配组 × 3张/组）
+    
+    const matchGroups = [];
+    
+    // 生成匹配组
+    for (let i = 0; i < 28; i++) {
+      const t1 = TIANGAN[Math.floor(Math.random() * TIANGAN.length)];
+      const rel = RELATIONS[Math.floor(Math.random() * RELATIONS.length)];
+      let t2 = TianganRelations[t1][rel];
+      
+      // 确保t2存在
+      if (!t2) {
+        const validRel = Object.keys(TianganRelations[t1])[0];
+        t2 = TianganRelations[t1][validRel];
+        matchGroups.push({ t1, t2, rel: validRel });
+      } else {
+        matchGroups.push({ t1, t2, rel });
+      }
     }
+    
+    // 将匹配组转化为卡牌
+    matchGroups.forEach(group => {
+      tileSet.push({ type: 'tiangan', value: group.t1 });
+      tileSet.push({ type: 'tiangan', value: group.t2 });
+      tileSet.push({ type: 'relation', value: group.rel });
+    });
 
     this.shuffleArray(tileSet);
     
-    const selectedTiles = tileSet.slice(0, 75);
-    
-    this.createMultiLayerTiles(selectedTiles);
+    this.createMultiLayerTiles(tileSet);
   }
 
   createMultiLayerTiles(tileData) {
