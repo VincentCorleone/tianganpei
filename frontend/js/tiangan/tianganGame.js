@@ -14,6 +14,7 @@ export default class TianganGame {
     this.slotCount = 7;
     this.gameEnded = false;
     this.showRanklistDuringGame = false;
+    this.showRulesDuringGame = false;
     this.ranklistData = [];
     this.ranklistLoading = false;
     this.ranklistError = null;
@@ -52,6 +53,7 @@ export default class TianganGame {
     this.score = 0;
     this.gameEnded = false;
     this.showRanklistDuringGame = false;
+    this.showRulesDuringGame = false;
     this.ranklistData = [];
     this.ranklistLoading = false;
     this.ranklistError = null;
@@ -192,19 +194,7 @@ export default class TianganGame {
     // 如果正在拖动，不处理点击
     if (this.isDragging) return;
     
-    const btnWidth = 120;
-    const btnHeight = 40;
     const centerX = canvas.width / 2;
-    
-    // 跳转到养羊么小程序按钮（放在排行榜按钮左边）
-    const sheepBtnX = canvas.width - 165;
-    const sheepBtnY = canvas.height - 190;
-    if (!this.showRanklistDuringGame && !this.gameEnded && 
-        x >= sheepBtnX - 40 && x <= sheepBtnX + 40 && 
-        y >= sheepBtnY - 17 && y <= sheepBtnY + 18) {
-      this.navigateToSheepGame();
-      return;
-    }
     
     // 如果游戏中正在显示排行榜
     if (this.showRanklistDuringGame) {
@@ -225,10 +215,51 @@ export default class TianganGame {
       return;
     }
     
-    // 排行榜按钮（游戏进行中）- 放在槽位上方
-    const rankBtnX = canvas.width - 70;
-    const rankBtnY = canvas.height - 190;
-    if (x >= rankBtnX - 40 && x <= rankBtnX + 40 && y >= rankBtnY - 17 && y <= rankBtnY + 18) {
+    // 如果游戏中正在显示规则
+    if (this.showRulesDuringGame) {
+      // 返回按钮
+      const backY = canvas.height - 90;
+      const btnWidth = 120;
+      const btnHeight = 40;
+      if (x >= centerX - btnWidth/2 && x <= centerX + btnWidth/2 && y >= backY && y <= backY + btnHeight) {
+        this.showRulesDuringGame = false;
+        return;
+      }
+      return;
+    }
+    
+    // 三个按钮的检测（并排）
+    const btnY = canvas.height - 190;
+    const btnWidth = 80;
+    const btnHeight = 35;
+    const btnSpacing = 10;
+    const totalWidth = btnWidth * 3 + btnSpacing * 2;
+    const startX = (canvas.width - totalWidth) / 2;
+    
+    // 1. 养羊么按钮
+    const sheepBtnX = startX + btnWidth / 2;
+    if (!this.showRanklistDuringGame && !this.showRulesDuringGame && !this.gameEnded && 
+        x >= sheepBtnX - btnWidth/2 && x <= sheepBtnX + btnWidth/2 && 
+        y >= btnY - btnHeight/2 && y <= btnY + btnHeight/2) {
+      this.navigateToSheepGame();
+      return;
+    }
+    
+    // 2. 游戏规则按钮
+    const rulesBtnX = startX + btnWidth + btnSpacing + btnWidth / 2;
+    if (!this.showRanklistDuringGame && !this.showRulesDuringGame && !this.gameEnded && 
+        x >= rulesBtnX - btnWidth/2 && x <= rulesBtnX + btnWidth/2 && 
+        y >= btnY - btnHeight/2 && y <= btnY + btnHeight/2) {
+      this.showRulesDuringGame = true;
+      this.ranklistScrollY = 0;
+      return;
+    }
+    
+    // 3. 排行榜按钮
+    const rankBtnX = startX + btnWidth * 2 + btnSpacing * 2 + btnWidth / 2;
+    if (!this.showRanklistDuringGame && !this.showRulesDuringGame && !this.gameEnded && 
+        x >= rankBtnX - btnWidth/2 && x <= rankBtnX + btnWidth/2 && 
+        y >= btnY - btnHeight/2 && y <= btnY + btnHeight/2) {
       this.openRanklistDuringGame();
       return;
     }
@@ -969,29 +1000,46 @@ export default class TianganGame {
 
     this.drawSlots();
 
-    // 跳转到养羊么小程序按钮（放在排行榜按钮左边）
-    const sheepBtnX = canvas.width - 165;
-    const sheepBtnY = canvas.height - 190;
+    // 三个按钮并排显示
+    const btnY = canvas.height - 190;
+    const btnWidth = 80;
+    const btnHeight = 35;
+    const btnSpacing = 10;
+    const totalWidth = btnWidth * 3 + btnSpacing * 2;
+    const startX = (canvas.width - totalWidth) / 2;
+
+    // 1. 养羊么按钮
+    const sheepBtnX = startX + btnWidth / 2;
     ctx.fillStyle = '#4CAF50';
-    this.drawRoundRect(ctx, sheepBtnX - 40, sheepBtnY - 17, 80, 35, 8);
+    this.drawRoundRect(ctx, sheepBtnX - btnWidth/2, btnY - btnHeight/2, btnWidth, btnHeight, 8);
+    ctx.fill();
+
+    ctx.fillStyle = '#FFF';
+    ctx.font = 'bold 12px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('🐑 养羊么', sheepBtnX, btnY + 4);
+
+    // 2. 游戏规则按钮
+    const rulesBtnX = startX + btnWidth + btnSpacing + btnWidth / 2;
+    ctx.fillStyle = '#9C27B0';
+    this.drawRoundRect(ctx, rulesBtnX - btnWidth/2, btnY - btnHeight/2, btnWidth, btnHeight, 8);
     ctx.fill();
 
     ctx.fillStyle = '#FFF';
     ctx.font = 'bold 14px Arial';
     ctx.textAlign = 'center';
-    ctx.fillText('🐑 养羊么', sheepBtnX, sheepBtnY + 5);
+    ctx.fillText('规则', rulesBtnX, btnY + 4);
 
-    // 排行榜按钮（游戏进行中）- 放在槽位上方
-    const rankBtnX = canvas.width - 70;
-    const rankBtnY = canvas.height - 190;
+    // 3. 排行榜按钮
+    const rankBtnX = startX + btnWidth * 2 + btnSpacing * 2 + btnWidth / 2;
     ctx.fillStyle = '#FF9800';
-    this.drawRoundRect(ctx, rankBtnX - 40, rankBtnY - 17, 80, 35, 8);
+    this.drawRoundRect(ctx, rankBtnX - btnWidth/2, btnY - btnHeight/2, btnWidth, btnHeight, 8);
     ctx.fill();
 
     ctx.fillStyle = '#FFF';
-    ctx.font = 'bold 16px Arial';
+    ctx.font = 'bold 14px Arial';
     ctx.textAlign = 'center';
-    ctx.fillText('排行榜', rankBtnX, rankBtnY + 5);
+    ctx.fillText('排行榜', rankBtnX, btnY + 4);
 
     ctx.fillStyle = '#FF5722';
     ctx.font = 'bold 28px Arial';
@@ -1005,6 +1053,11 @@ export default class TianganGame {
     // 如果游戏中正在显示排行榜
     if (this.showRanklistDuringGame) {
       this.renderRanklistDuringGame();
+    }
+    
+    // 如果游戏中正在显示规则
+    if (this.showRulesDuringGame) {
+      this.renderRulesDuringGame();
     }
   }
 
@@ -1071,6 +1124,76 @@ export default class TianganGame {
   update() {
     this.tiles.forEach(tile => tile.update());
     this.slotTiles.forEach(tile => tile.update());
+  }
+
+  renderRulesDuringGame() {
+    const centerX = canvas.width / 2;
+    
+    // 半透明遮罩
+    ctx.fillStyle = 'rgba(0,0,0,0.7)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    // 标题
+    ctx.fillStyle = '#FFD700';
+    ctx.font = 'bold 24px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('游戏规则', centerX, 50);
+    
+    // 规则内容
+    ctx.fillStyle = '#FFF';
+    ctx.font = '14px Arial';
+    ctx.textAlign = 'left';
+    
+    const rules = [
+      '1. 点击顶部未被覆盖的卡牌',
+      '2. 卡牌会移动到底部卡槽中',
+      '3. 集齐2个天干+1个关系即可消除得分',
+      '4. 消除一组得10分',
+      '5. 卡槽满7张且未消除则游戏结束',
+      '6. 目标：消除所有卡牌，获得高分！'
+    ];
+    
+    let startY = 90;
+    const lineHeight = 32;
+    
+    rules.forEach((rule, index) => {
+      ctx.fillText(rule, 30, startY + index * lineHeight);
+    });
+    
+    // 关系说明
+    ctx.fillStyle = '#9C27B0';
+    ctx.font = 'bold 16px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('天干关系说明', centerX, 320);
+    
+    ctx.fillStyle = '#FFF';
+    ctx.font = '13px Arial';
+    ctx.textAlign = 'left';
+    
+    const relations = [
+      '福神：吉神，带来好运',
+      '财神：财神，主财运',
+      '贵神：贵人，得人相助',
+      '冲：相冲，不利之兆',
+      '被冲：被冲，被动不利'
+    ];
+    
+    relations.forEach((rel, index) => {
+      ctx.fillText(rel, 30, 350 + index * lineHeight);
+    });
+    
+    // 返回按钮
+    const backY = canvas.height - 90;
+    const btnWidth = 120;
+    const btnHeight = 40;
+    ctx.fillStyle = '#2196F3';
+    this.drawRoundRect(ctx, centerX - btnWidth/2, backY, btnWidth, btnHeight, 10);
+    ctx.fill();
+
+    ctx.fillStyle = '#FFF';
+    ctx.font = 'bold 18px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('← 返回', centerX, backY + 26);
   }
 
   loop() {
