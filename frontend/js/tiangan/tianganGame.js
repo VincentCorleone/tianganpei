@@ -13,9 +13,26 @@ export default class TianganGame {
     this.aniId = 0;
     this.slotCount = 7;
     this.gameEnded = false;
+    
+    // 设置微信小游戏转发
+    this.setupShare();
+    
     this.init();
     this.bindEvents();
     this.loop();
+  }
+
+  setupShare() {
+    // 设置右上角转发菜单
+    if (wx.onShareAppMessage) {
+      wx.onShareAppMessage(() => {
+        return {
+          title: '贵人连连看 - 来和我一起PK吧！',
+          imageUrl: '',
+          query: ''
+        };
+      });
+    }
   }
 
   init() {
@@ -272,8 +289,16 @@ export default class TianganGame {
       nickname: '',
       inputFocus: false,
       submitting: false,
-      showRanklist: false
+      showRanklist: false,
+      ranklistData: [],
+      ranklistLoading: false,
+      ranklistError: null
     };
+    
+    // 游戏结束时自动弹出昵称输入框
+    setTimeout(() => {
+      this.showNativeInput();
+    }, 500);
   }
 
   handleGameOverTouch(x, y) {
@@ -282,6 +307,23 @@ export default class TianganGame {
     const btnWidth = 200;
     const btnHeight = 50;
     const centerX = canvas.width / 2;
+
+    // 如果正在显示排行榜
+    if (this.gameOverState.showRanklist) {
+      // 返回按钮
+      const backY = canvas.height - 170;
+      if (x >= centerX - btnWidth/2 && x <= centerX + btnWidth/2 && y >= backY && y <= backY + btnHeight) {
+        this.gameOverState.showRanklist = false;
+        return;
+      }
+      // 分享按钮
+      const shareY = canvas.height - 100;
+      if (x >= centerX - btnWidth/2 && x <= centerX + btnWidth/2 && y >= shareY && y <= shareY + btnHeight) {
+        this.shareGame();
+        return;
+      }
+      return;
+    }
 
     // 输入框区域
     const inputY = 250;
@@ -378,15 +420,27 @@ export default class TianganGame {
     }
   }
 
-  openRanklist() {
-    wx.navigateTo({
-      url: '/pages/ranklist/ranklist'
-    }).catch(() => {
-      wx.showToast({
-        title: '未配置排行榜页面',
-        icon: 'none'
-      });
-    });
+  async openRanklist() {
+    this.gameOverState.showRanklist = true;
+    this.gameOverState.ranklistLoading = true;
+    this.gameOverState.ranklistError = null;
+
+    try {
+      const API_BASE = 'http://YOUR_SERVER_IP:3000';
+      const response = await fetch(`${API_BASE}/api/leaderboard`);
+      const result = await response.json();
+
+      if (result.success) {
+        this.gameOverState.ranklistData = result.data;
+      } else {
+        throw new Error(result.error || '加载失败');
+      }
+    } catch (e) {
+      console.error('加载排行榜失败:', e);
+      this.gameOverState.ranklistError = e.message || '加载失败';
+    } finally {
+      this.gameOverState.ranklistLoading = false;
+    }
   }
 
   renderGameOverUI() {
@@ -398,6 +452,12 @@ export default class TianganGame {
     // 半透明遮罩
     ctx.fillStyle = 'rgba(0,0,0,0.7)';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // 如果正在显示排行榜
+    if (inputs.showRanklist) {
+      this.renderRanklist();
+      return;
+    }
 
     // 标题
     ctx.fillStyle = '#FFD700';
@@ -450,6 +510,146 @@ export default class TianganGame {
       ctx.fillStyle = '#333';
       ctx.font = 'bold 28px Arial';
       ctx.fillText('提交中...', centerX, canvas.height / 2);
+    }
+  }
+
+  renderRanklist() {
+    const centerX = canvas.width / 2;
+    const inputs = this.gameOverState;
+
+    // 排行榜标题
+    ctx.fillStyle = '#FFD700';
+    ctx.font = 'bold 28px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('🏆 排行榜', centerX, 60);
+
+    // 加载状态
+    if (inputs.ranklistLoading) {
+      ctx.fillStyle = '#FFF';
+      ctx.font = '20px Arial';
+      ctx.fillText('加载中...', centerX, canvas.height / 2);
+      this.renderRanklistBackButton();
+      return;
+    }
+
+    // 错误状态
+    if (inputs.ranklistError) {
+      ctx.fillStyle = '#FF5722';
+      ctx.font = '18px Arial';
+      ctx.fillText('加载失败: ' + inputs.ranklistError, centerX, canvas.height / 2);
+      this.renderRanklistBackButton();
+      return;
+    }
+
+    // 排行榜数据
+    const data = inputs.ranklistData;
+    if (data.length === 0) {
+      ctx.fillStyle = '#999';
+      ctx.font = '18px Arial';
+      ctx.fillText('暂无排行数据', centerX, canvas.height / 2);
+      this.renderRanklistBackButton();
+      return;
+    }
+
+    // 绘制排行榜表格
+    const startY = 100;
+    const rowHeight = 40;
+    const maxRows = Math.min(10, data.length);
+
+    // 表头
+    ctx.fillStyle = '#667eea';
+    this.drawRoundRect(ctx, centerX - 150, startY, 300, rowHeight, 8);
+    ctx.fill();
+
+    ctx.fillStyle = '#FFF';
+    ctx.font = 'bold 16px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('排名', centerX - 100, startY + 25);
+    ctx.fillText('昵称', centerX, startY + 25);
+    ctx.fillText('分数', centerX + 100, startY + 25);
+
+    // 数据行
+    for (let i = 0; i < maxRows; i++) {
+      const item = data[i];
+      const y = startY + (i + 1) * rowHeight;
+
+      // 行背景
+      ctx.fillStyle = i % 2 === 0 ? '#f9f9f9' : '#fff';
+      this.drawRoundRect(ctx, centerX - 150, y, 300, rowHeight, 4);
+      ctx.fill();
+
+      // 排名颜色
+      let rankColor = '#333';
+      if (item.rank === 1) rankColor = '#FFD700';
+      else if (item.rank === 2) rankColor = '#C0C0C0';
+      else if (item.rank === 3) rankColor = '#CD7F32';
+
+      ctx.fillStyle = rankColor;
+      ctx.font = 'bold 16px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText(item.rank, centerX - 100, y + 25);
+
+      ctx.fillStyle = '#333';
+      ctx.font = '14px Arial';
+      ctx.fillText(item.nickname, centerX, y + 25);
+      ctx.fillText(item.score, centerX + 100, y + 25);
+    }
+
+    this.renderRanklistButtons();
+  }
+
+  renderRanklistButtons() {
+    const centerX = canvas.width / 2;
+    const btnWidth = 200;
+    const btnHeight = 50;
+    
+    // 返回按钮
+    const backY = canvas.height - 170;
+    ctx.fillStyle = '#2196F3';
+    this.drawRoundRect(ctx, centerX - btnWidth/2, backY, btnWidth, btnHeight, 10);
+    ctx.fill();
+
+    ctx.fillStyle = '#FFF';
+    ctx.font = 'bold 22px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('← 返回', centerX, backY + 32);
+    
+    // 分享按钮
+    const shareY = canvas.height - 100;
+    ctx.fillStyle = '#4CAF50';
+    this.drawRoundRect(ctx, centerX - btnWidth/2, shareY, btnWidth, btnHeight, 10);
+    ctx.fill();
+
+    ctx.fillStyle = '#FFF';
+    ctx.font = 'bold 22px Arial';
+    ctx.fillText('🎁 分享PK', centerX, shareY + 32);
+  }
+
+  shareGame() {
+    // 微信小游戏分享功能
+    if (wx.shareAppMessage) {
+      wx.shareAppMessage({
+        title: '贵人连连看 - 来和我一起PK吧！',
+        imageUrl: '', // 可以设置分享图片
+        query: '',
+        success: function() {
+          wx.showToast({
+            title: '分享成功！',
+            icon: 'success'
+          });
+        },
+        fail: function() {
+          wx.showToast({
+            title: '分享失败',
+            icon: 'none'
+          });
+        }
+      });
+    } else {
+      wx.showToast({
+        title: '分享功能暂不可用',
+        icon: 'none'
+      });
     }
   }
 
