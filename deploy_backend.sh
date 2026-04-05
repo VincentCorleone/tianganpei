@@ -23,9 +23,9 @@ fi
 
 echo "本地代码检查通过"
 
-# 第一步：在远程服务器上备份上传的图片
-echo "正在备份上传的图片..."
-ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa $REMOTE_USER@$REMOTE_HOST "DEPLOY_PATH='$DEPLOY_PATH'; BACKUP_DIR=\"/tmp/uploads_backup_\$(date +%s)\"; if [ -d \"\$DEPLOY_PATH/public/uploads\" ]; then mkdir -p \"\$BACKUP_DIR\" && cp -r \"\$DEPLOY_PATH/public/uploads\"/* \"\$BACKUP_DIR/\" 2>/dev/null || true && echo \"图片备份成功，备份位置: \$BACKUP_DIR\"; else echo \"没有需要备份的图片\"; fi"
+# 第一步：在远程服务器上备份上传的图片和排行榜
+echo "正在备份上传的图片和排行榜..."
+ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa $REMOTE_USER@$REMOTE_HOST "DEPLOY_PATH='$DEPLOY_PATH'; BACKUP_DIR=\"/tmp/uploads_backup_\$(date +%s)\"; mkdir -p \"\$BACKUP_DIR\"; if [ -d \"\$DEPLOY_PATH/public/uploads\" ]; then cp -r \"\$DEPLOY_PATH/public/uploads\"/* \"\$BACKUP_DIR/\" 2>/dev/null || true; fi; if [ -f \"\$DEPLOY_PATH/leaderboard.md\" ]; then cp \"\$DEPLOY_PATH/leaderboard.md\" \"\$BACKUP_DIR/\"; fi; echo \"备份成功，备份位置: \$BACKUP_DIR\""
 
 echo ""
 
@@ -54,7 +54,7 @@ echo "代码传输成功"
 
 # 第四步：在远程服务器上部署
 echo "正在远程服务器上部署..."
-ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa $REMOTE_USER@$REMOTE_HOST "DEPLOY_PATH='$DEPLOY_PATH'; cd \"\$DEPLOY_PATH\"; echo '清理旧代码...'; for item in *; do if [ \"\$item\" != 'public' ]; then rm -rf \"\$item\"; fi; done; if [ -d 'public' ]; then cd public; for item in *; do if [ \"\$item\" != 'uploads' ]; then rm -rf \"\$item\"; fi; done; cd ..; fi; echo '解压新代码...'; tar -xzf /tmp/backend_temp.tar.gz; rm /tmp/backend_temp.tar.gz; echo '恢复备份的图片...'; BACKUP_DIR=\$(ls -td /tmp/uploads_backup_* 2>/dev/null | head -1); if [ -n \"\$BACKUP_DIR\" ] && [ -d \"\$BACKUP_DIR\" ]; then mkdir -p \"\$DEPLOY_PATH/public/uploads\"; cp -r \"\$BACKUP_DIR\"/* \"\$DEPLOY_PATH/public/uploads/\" 2>/dev/null || true; rm -rf \"\$BACKUP_DIR\"; echo '图片恢复成功'; else echo '没有找到备份的图片'; fi; echo '安装依赖...'; npm install"
+ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa $REMOTE_USER@$REMOTE_HOST "DEPLOY_PATH='$DEPLOY_PATH'; cd \"\$DEPLOY_PATH\"; echo '清理旧代码...'; for item in *; do if [ \"\$item\" != 'public' ] && [ \"\$item\" != 'leaderboard.md' ]; then rm -rf \"\$item\"; fi; done; if [ -d 'public' ]; then cd public; for item in *; do if [ \"\$item\" != 'uploads' ]; then rm -rf \"\$item\"; fi; done; cd ..; fi; echo '解压新代码...'; tar -xzf /tmp/backend_temp.tar.gz; rm /tmp/backend_temp.tar.gz; echo '恢复备份...'; BACKUP_DIR=\$(ls -td /tmp/uploads_backup_* 2>/dev/null | head -1); if [ -n \"\$BACKUP_DIR\" ] && [ -d \"\$BACKUP_DIR\" ]; then mkdir -p \"\$DEPLOY_PATH/public/uploads\"; cp -r \"\$BACKUP_DIR\"/* \"\$DEPLOY_PATH/public/uploads/\" 2>/dev/null || true; if [ -f \"\$BACKUP_DIR/leaderboard.md\" ]; then cp \"\$BACKUP_DIR/leaderboard.md\" \"\$DEPLOY_PATH/\"; fi; rm -rf \"\$BACKUP_DIR\"; echo '备份恢复成功'; else echo '没有找到备份'; fi; echo '安装依赖...'; npm install"
 
 echo ""
 

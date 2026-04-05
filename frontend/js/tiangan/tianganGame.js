@@ -13,6 +13,13 @@ export default class TianganGame {
     this.aniId = 0;
     this.slotCount = 7;
     this.gameEnded = false;
+    this.showRanklistDuringGame = false;
+    this.ranklistData = [];
+    this.ranklistLoading = false;
+    this.ranklistError = null;
+    this.ranklistScrollY = 0; // 排行榜滚动偏移
+    this.lastTouchY = 0; // 上次触摸Y坐标
+    this.isDragging = false; // 是否正在拖动
     
     // 设置微信小游戏转发
     this.setupShare();
@@ -26,8 +33,12 @@ export default class TianganGame {
     // 设置右上角转发菜单
     if (wx.onShareAppMessage) {
       wx.onShareAppMessage(() => {
+        let title = '贵人连连看 - 来和我一起PK吧！';
+        if (this.score > 0) {
+          title = `我在贵人连连看得了${this.score}分！来和我PK吧！`;
+        }
         return {
-          title: '贵人连连看 - 来和我一起PK吧！',
+          title: title,
           imageUrl: '',
           query: ''
         };
@@ -40,6 +51,13 @@ export default class TianganGame {
     this.slotTiles = [];
     this.score = 0;
     this.gameEnded = false;
+    this.showRanklistDuringGame = false;
+    this.ranklistData = [];
+    this.ranklistLoading = false;
+    this.ranklistError = null;
+    this.ranklistScrollY = 0;
+    this.lastTouchY = 0;
+    this.isDragging = false;
     this.generateTiles();
   }
 
@@ -150,11 +168,71 @@ export default class TianganGame {
   bindEvents() {
     wx.onTouchStart((res) => {
       const touch = res.touches[0];
+      this.lastTouchY = touch.clientY;
+      this.isDragging = false;
       this.handleTouch(touch.clientX, touch.clientY);
+    });
+
+    wx.onTouchMove((res) => {
+      const touch = res.touches[0];
+      if (this.showRanklistDuringGame || (this.gameEnded && this.gameOverState && this.gameOverState.showRanklist)) {
+        const deltaY = touch.clientY - this.lastTouchY;
+        this.ranklistScrollY -= deltaY; // 反转滚动方向
+        this.lastTouchY = touch.clientY;
+        this.isDragging = true;
+      }
+    });
+
+    wx.onTouchEnd(() => {
+      this.isDragging = false;
     });
   }
 
   handleTouch(x, y) {
+    // 如果正在拖动，不处理点击
+    if (this.isDragging) return;
+    
+    const btnWidth = 120;
+    const btnHeight = 40;
+    const centerX = canvas.width / 2;
+    
+    // 跳转到养羊么小程序按钮（放在排行榜按钮左边）
+    const sheepBtnX = canvas.width - 165;
+    const sheepBtnY = canvas.height - 190;
+    if (!this.showRanklistDuringGame && !this.gameEnded && 
+        x >= sheepBtnX - 40 && x <= sheepBtnX + 40 && 
+        y >= sheepBtnY - 17 && y <= sheepBtnY + 18) {
+      this.navigateToSheepGame();
+      return;
+    }
+    
+    // 如果游戏中正在显示排行榜
+    if (this.showRanklistDuringGame) {
+      // 返回按钮
+      const backY = canvas.height - 150;
+      const btnWidth = 120;
+      const btnHeight = 40;
+      if (x >= centerX - btnWidth/2 && x <= centerX + btnWidth/2 && y >= backY && y <= backY + btnHeight) {
+        this.showRanklistDuringGame = false;
+        return;
+      }
+      // 分享按钮
+      const shareY = canvas.height - 90;
+      if (x >= centerX - btnWidth/2 && x <= centerX + btnWidth/2 && y >= shareY && y <= shareY + btnHeight) {
+        this.shareGame();
+        return;
+      }
+      return;
+    }
+    
+    // 排行榜按钮（游戏进行中）- 放在槽位上方
+    const rankBtnX = canvas.width - 70;
+    const rankBtnY = canvas.height - 190;
+    if (x >= rankBtnX - 40 && x <= rankBtnX + 40 && y >= rankBtnY - 17 && y <= rankBtnY + 18) {
+      this.openRanklistDuringGame();
+      return;
+    }
+
     if (this.gameEnded && this.gameOverState) {
       this.handleGameOverTouch(x, y);
       return;
@@ -294,14 +372,13 @@ export default class TianganGame {
       ranklistLoading: false,
       ranklistError: null
     };
-    
-    // 游戏结束时自动弹出昵称输入框
-    setTimeout(() => {
-      this.showNativeInput();
-    }, 500);
+    this.ranklistScrollY = 0;
   }
 
   handleGameOverTouch(x, y) {
+    // 如果正在拖动，不处理点击
+    if (this.isDragging) return;
+    
     if (!this.gameOverState || this.gameOverState.submitting) return;
 
     const btnWidth = 200;
@@ -311,13 +388,15 @@ export default class TianganGame {
     // 如果正在显示排行榜
     if (this.gameOverState.showRanklist) {
       // 返回按钮
-      const backY = canvas.height - 170;
+      const backY = canvas.height - 150;
+      const btnWidth = 180;
+      const btnHeight = 45;
       if (x >= centerX - btnWidth/2 && x <= centerX + btnWidth/2 && y >= backY && y <= backY + btnHeight) {
         this.gameOverState.showRanklist = false;
         return;
       }
       // 分享按钮
-      const shareY = canvas.height - 100;
+      const shareY = canvas.height - 90;
       if (x >= centerX - btnWidth/2 && x <= centerX + btnWidth/2 && y >= shareY && y <= shareY + btnHeight) {
         this.shareGame();
         return;
@@ -326,7 +405,7 @@ export default class TianganGame {
     }
 
     // 输入框区域
-    const inputY = 250;
+    const inputY = 210;
     if (x >= centerX - 150 && x <= centerX + 150 && y >= inputY && y <= inputY + 40) {
       this.gameOverState.inputFocus = !this.gameOverState.inputFocus;
       // 使用微信输入框
@@ -339,21 +418,21 @@ export default class TianganGame {
     }
 
     // 提交按钮
-    const submitY = 310;
+    const submitY = 270;
     if (x >= centerX - btnWidth/2 && x <= centerX + btnWidth/2 && y >= submitY && y <= submitY + btnHeight) {
       this.submitScore();
       return;
     }
 
     // 查看排行按钮
-    const rankY = 380;
+    const rankY = 340;
     if (x >= centerX - btnWidth/2 && x <= centerX + btnWidth/2 && y >= rankY && y <= rankY + btnHeight) {
       this.openRanklist();
       return;
     }
 
     // 重新开始按钮
-    const retryY = 450;
+    const retryY = 410;
     if (x >= centerX - btnWidth/2 && x <= centerX + btnWidth/2 && y >= retryY && y <= retryY + btnHeight) {
       this.init();
       return;
@@ -375,7 +454,7 @@ export default class TianganGame {
     });
   }
 
-  async submitScore() {
+  submitScore() {
     const nickname = this.gameOverState.nickname.trim();
     if (!nickname) {
       wx.showToast({
@@ -387,60 +466,64 @@ export default class TianganGame {
 
     this.gameOverState.submitting = true;
 
-    try {
-      // 【请修改为你的服务器IP或域名】
-      const API_BASE = 'http://YOUR_SERVER_IP:3000';
-      const response = await fetch(`${API_BASE}/api/score`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          nickname: nickname,
-          score: this.gameOverState.score
-        })
-      });
-
-      const result = await response.json();
-
-      if (result.success) {
+    const API_BASE = 'https://guiren.interstellar.fan';
+    wx.request({
+      url: `${API_BASE}/api/score`,
+      method: 'POST',
+      data: {
+        nickname: nickname,
+        score: this.gameOverState.score
+      },
+      header: {
+        'Content-Type': 'application/json'
+      },
+      success: (res) => {
+        if (res.data && res.data.success) {
+          wx.showToast({
+            title: '提交成功',
+            icon: 'success'
+          });
+        } else {
+          throw new Error(res.data.error || '提交失败');
+        }
+      },
+      fail: (e) => {
+        console.error('提交分数失败:', e);
         wx.showToast({
-          title: '提交成功',
-          icon: 'success'
+          title: '提交失败，请检查网络',
+          icon: 'none'
         });
-      } else {
-        throw new Error(result.error || '提交失败');
+      },
+      complete: () => {
+        this.gameOverState.submitting = false;
       }
-    } catch (e) {
-      console.error('提交分数失败:', e);
-      wx.showToast({
-        title: '提交失败，请检查网络',
-        icon: 'none'
-      });
-    } finally {
-      this.gameOverState.submitting = false;
-    }
+    });
   }
 
-  async openRanklist() {
+  openRanklist() {
     this.gameOverState.showRanklist = true;
     this.gameOverState.ranklistLoading = true;
     this.gameOverState.ranklistError = null;
 
-    try {
-      const API_BASE = 'http://YOUR_SERVER_IP:3000';
-      const response = await fetch(`${API_BASE}/api/leaderboard`);
-      const result = await response.json();
-
-      if (result.success) {
-        this.gameOverState.ranklistData = result.data;
-      } else {
-        throw new Error(result.error || '加载失败');
+    const API_BASE = 'https://guiren.interstellar.fan';
+    wx.request({
+      url: `${API_BASE}/api/leaderboard`,
+      method: 'GET',
+      success: (res) => {
+        if (res.data && res.data.success) {
+          this.gameOverState.ranklistData = res.data.data;
+        } else {
+          throw new Error(res.data.error || '加载失败');
+        }
+      },
+      fail: (e) => {
+        console.error('加载排行榜失败:', e);
+        this.gameOverState.ranklistError = e.errMsg || '加载失败';
+      },
+      complete: () => {
+        this.gameOverState.ranklistLoading = false;
       }
-    } catch (e) {
-      console.error('加载排行榜失败:', e);
-      this.gameOverState.ranklistError = e.message || '加载失败';
-    } finally {
-      this.gameOverState.ranklistLoading = false;
-    }
+    });
   }
 
   renderGameOverUI() {
@@ -471,7 +554,7 @@ export default class TianganGame {
 
     // 输入框背景
     ctx.fillStyle = '#FFF';
-    this.drawRoundRect(ctx, centerX - 150, 250, 300, 40, 8);
+    this.drawRoundRect(ctx, centerX - 150, 210, 300, 40, 8);
     ctx.fill();
     ctx.strokeStyle = inputs.inputFocus ? '#667eea' : '#CCC';
     ctx.lineWidth = 3;
@@ -481,13 +564,13 @@ export default class TianganGame {
     ctx.fillStyle = inputs.inputFocus ? '#333' : '#999';
     ctx.font = '20px Arial';
     ctx.textAlign = 'left';
-    ctx.fillText(inputs.nickname || '点击输入昵称', centerX - 140, 275);
+    ctx.fillText(inputs.nickname || '点击输入昵称', centerX - 140, 235);
 
     // 按钮通用
     const buttons = [
-      { label: '提交分数', y: 310, color: '#4CAF50' },
-      { label: '查看排行', y: 380, color: '#2196F3' },
-      { label: '重新开始', y: 450, color: '#FF9800' }
+      { label: '提交分数', y: 270, color: '#4CAF50' },
+      { label: '查看排行', y: 340, color: '#2196F3' },
+      { label: '重新开始', y: 410, color: '#FF9800' }
     ];
 
     buttons.forEach(btn => {
@@ -517,18 +600,22 @@ export default class TianganGame {
     const centerX = canvas.width / 2;
     const inputs = this.gameOverState;
 
+    // 限制滚动范围
+    const maxScroll = Math.max(0, (inputs.ranklistData.length - 6) * 35);
+    this.ranklistScrollY = Math.max(0, Math.min(this.ranklistScrollY, maxScroll));
+
     // 排行榜标题
     ctx.fillStyle = '#FFD700';
-    ctx.font = 'bold 28px Arial';
+    ctx.font = 'bold 24px Arial';
     ctx.textAlign = 'center';
-    ctx.fillText('🏆 排行榜', centerX, 60);
+    ctx.fillText('🏆 排行榜', centerX, 50);
 
     // 加载状态
     if (inputs.ranklistLoading) {
       ctx.fillStyle = '#FFF';
       ctx.font = '20px Arial';
       ctx.fillText('加载中...', centerX, canvas.height / 2);
-      this.renderRanklistBackButton();
+      this.renderRanklistButtons();
       return;
     }
 
@@ -537,7 +624,7 @@ export default class TianganGame {
       ctx.fillStyle = '#FF5722';
       ctx.font = '18px Arial';
       ctx.fillText('加载失败: ' + inputs.ranklistError, centerX, canvas.height / 2);
-      this.renderRanklistBackButton();
+      this.renderRanklistButtons();
       return;
     }
 
@@ -547,35 +634,37 @@ export default class TianganGame {
       ctx.fillStyle = '#999';
       ctx.font = '18px Arial';
       ctx.fillText('暂无排行数据', centerX, canvas.height / 2);
-      this.renderRanklistBackButton();
+      this.renderRanklistButtons();
       return;
     }
 
     // 绘制排行榜表格
-    const startY = 100;
-    const rowHeight = 40;
-    const maxRows = Math.min(10, data.length);
+    const startY = 70;
+    const rowHeight = 35;
 
     // 表头
     ctx.fillStyle = '#667eea';
-    this.drawRoundRect(ctx, centerX - 150, startY, 300, rowHeight, 8);
+    this.drawRoundRect(ctx, centerX - 140, startY, 280, rowHeight, 8);
     ctx.fill();
 
     ctx.fillStyle = '#FFF';
-    ctx.font = 'bold 16px Arial';
+    ctx.font = 'bold 14px Arial';
     ctx.textAlign = 'center';
-    ctx.fillText('排名', centerX - 100, startY + 25);
-    ctx.fillText('昵称', centerX, startY + 25);
-    ctx.fillText('分数', centerX + 100, startY + 25);
+    ctx.fillText('排名', centerX - 95, startY + 22);
+    ctx.fillText('昵称', centerX, startY + 22);
+    ctx.fillText('分数', centerX + 95, startY + 22);
 
-    // 数据行
-    for (let i = 0; i < maxRows; i++) {
+    // 数据行（使用滚动偏移）
+    for (let i = 0; i < data.length; i++) {
       const item = data[i];
-      const y = startY + (i + 1) * rowHeight;
-
+      const y = startY + rowHeight + i * rowHeight - this.ranklistScrollY;
+      
+      // 只绘制可见的行
+      if (y < startY + rowHeight - 50 || y > canvas.height - 200) continue;
+      
       // 行背景
       ctx.fillStyle = i % 2 === 0 ? '#f9f9f9' : '#fff';
-      this.drawRoundRect(ctx, centerX - 150, y, 300, rowHeight, 4);
+      this.drawRoundRect(ctx, centerX - 140, y, 280, rowHeight, 4);
       ctx.fill();
 
       // 排名颜色
@@ -585,14 +674,14 @@ export default class TianganGame {
       else if (item.rank === 3) rankColor = '#CD7F32';
 
       ctx.fillStyle = rankColor;
-      ctx.font = 'bold 16px Arial';
+      ctx.font = 'bold 14px Arial';
       ctx.textAlign = 'center';
-      ctx.fillText(item.rank, centerX - 100, y + 25);
+      ctx.fillText(item.rank, centerX - 95, y + 22);
 
       ctx.fillStyle = '#333';
-      ctx.font = '14px Arial';
-      ctx.fillText(item.nickname, centerX, y + 25);
-      ctx.fillText(item.score, centerX + 100, y + 25);
+      ctx.font = '13px Arial';
+      ctx.fillText(item.nickname, centerX, y + 22);
+      ctx.fillText(item.score, centerX + 95, y + 22);
     }
 
     this.renderRanklistButtons();
@@ -600,37 +689,49 @@ export default class TianganGame {
 
   renderRanklistButtons() {
     const centerX = canvas.width / 2;
-    const btnWidth = 200;
-    const btnHeight = 50;
+    const btnWidth = 180;
+    const btnHeight = 45;
     
     // 返回按钮
-    const backY = canvas.height - 170;
+    const backY = canvas.height - 150;
     ctx.fillStyle = '#2196F3';
     this.drawRoundRect(ctx, centerX - btnWidth/2, backY, btnWidth, btnHeight, 10);
     ctx.fill();
 
     ctx.fillStyle = '#FFF';
-    ctx.font = 'bold 22px Arial';
+    ctx.font = 'bold 20px Arial';
     ctx.textAlign = 'center';
-    ctx.fillText('← 返回', centerX, backY + 32);
+    ctx.fillText('← 返回', centerX, backY + 28);
     
     // 分享按钮
-    const shareY = canvas.height - 100;
+    const shareY = canvas.height - 90;
     ctx.fillStyle = '#4CAF50';
     this.drawRoundRect(ctx, centerX - btnWidth/2, shareY, btnWidth, btnHeight, 10);
     ctx.fill();
 
     ctx.fillStyle = '#FFF';
-    ctx.font = 'bold 22px Arial';
-    ctx.fillText('🎁 分享PK', centerX, shareY + 32);
+    ctx.font = 'bold 20px Arial';
+    ctx.fillText('🎁 分享PK', centerX, shareY + 28);
   }
 
   shareGame() {
     // 微信小游戏分享功能
     if (wx.shareAppMessage) {
+      let title = '贵人连连看 - 来和我一起PK吧！';
+      let shareScore = this.score;
+      
+      // 如果游戏结束了，使用结束时的分数
+      if (this.gameOverState && this.gameOverState.score) {
+        shareScore = this.gameOverState.score;
+      }
+      
+      if (shareScore > 0) {
+        title = `我在贵人连连看得了${shareScore}分！来和我PK吧！`;
+      }
+      
       wx.shareAppMessage({
-        title: '贵人连连看 - 来和我一起PK吧！',
-        imageUrl: '', // 可以设置分享图片
+        title: title,
+        imageUrl: '',
         query: '',
         success: function() {
           wx.showToast({
@@ -638,11 +739,21 @@ export default class TianganGame {
             icon: 'success'
           });
         },
-        fail: function() {
-          wx.showToast({
-            title: '分享失败',
-            icon: 'none'
-          });
+        fail: function(e) {
+          console.error('分享失败:', e);
+          // 如果是违规限制，给出友好提示
+          if (e.errMsg && e.errMsg.includes('违规')) {
+            wx.showToast({
+              title: '分享功能暂不可用',
+              icon: 'none',
+              duration: 2000
+            });
+          } else {
+            wx.showToast({
+              title: '分享失败',
+              icon: 'none'
+            });
+          }
         }
       });
     } else {
@@ -651,6 +762,180 @@ export default class TianganGame {
         icon: 'none'
       });
     }
+  }
+
+  navigateToSheepGame() {
+    // 跳转到"养羊么"小程序
+    const SHEEP_GAME_APP_ID = 'wxf88ee8df124faf5f';
+    
+    if (wx.navigateToMiniProgram) {
+      wx.navigateToMiniProgram({
+        appId: SHEEP_GAME_APP_ID,
+        path: '',
+        envVersion: 'release',
+        success: function() {
+          console.log('跳转成功');
+        },
+        fail: function(e) {
+          console.error('跳转失败:', e);
+          wx.showToast({
+            title: '跳转失败',
+            icon: 'none'
+          });
+        }
+      });
+    } else {
+      wx.showToast({
+        title: '功能暂不可用',
+        icon: 'none'
+      });
+    }
+  }
+
+  openRanklistDuringGame() {
+    this.showRanklistDuringGame = true;
+    this.ranklistLoading = true;
+    this.ranklistError = null;
+    this.ranklistScrollY = 0;
+    
+    const API_BASE = 'https://guiren.interstellar.fan';
+    wx.request({
+      url: API_BASE + '/api/leaderboard',
+      method: 'GET',
+      header: { 'content-type': 'application/json' },
+      success: (res) => {
+        if (res.data && res.data.success) {
+          this.ranklistData = res.data.data || [];
+        } else {
+          this.ranklistError = '获取排行榜失败';
+        }
+      },
+      fail: (err) => {
+        this.ranklistError = '网络请求失败';
+        console.error('加载排行榜失败:', err);
+      },
+      complete: () => {
+        this.ranklistLoading = false;
+      }
+    });
+  }
+
+  renderRanklistDuringGame() {
+    const centerX = canvas.width / 2;
+    
+    // 限制滚动范围
+    const maxScroll = Math.max(0, (this.ranklistData.length - 6) * 35);
+    this.ranklistScrollY = Math.max(0, Math.min(this.ranklistScrollY, maxScroll));
+    
+    // 半透明遮罩
+    ctx.fillStyle = 'rgba(0,0,0,0.7)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    // 标题
+    ctx.fillStyle = '#FFD700';
+    ctx.font = 'bold 24px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('排行榜', centerX, 50);
+    
+    // 加载状态
+    if (this.ranklistLoading) {
+      ctx.fillStyle = '#FFF';
+      ctx.font = '24px Arial';
+      ctx.fillText('加载中...', centerX, canvas.height / 2);
+      this.renderRanklistDuringGameButtons();
+      return;
+    }
+    
+    // 错误状态
+    if (this.ranklistError) {
+      ctx.fillStyle = '#FF6B6B';
+      ctx.font = '20px Arial';
+      ctx.fillText(this.ranklistError, centerX, canvas.height / 2);
+      this.renderRanklistDuringGameButtons();
+      return;
+    }
+    
+    // 显示排行榜表格
+    const startY = 70;
+    const rowHeight = 35;
+    
+    // 表头
+    ctx.fillStyle = '#667eea';
+    ctx.fillRect(30, startY, canvas.width - 60, rowHeight);
+    ctx.fillStyle = '#FFF';
+    ctx.font = 'bold 14px Arial';
+    ctx.textAlign = 'left';
+    ctx.fillText('排名', 40, startY + 23);
+    ctx.textAlign = 'center';
+    ctx.fillText('昵称', centerX, startY + 23);
+    ctx.textAlign = 'right';
+    ctx.fillText('分数', canvas.width - 40, startY + 23);
+    
+    // 数据行（使用滚动偏移）
+    for (let i = 0; i < this.ranklistData.length; i++) {
+      const item = this.ranklistData[i];
+      const y = startY + rowHeight + i * rowHeight - this.ranklistScrollY;
+      
+      // 只绘制可见的行
+      if (y < startY + rowHeight - 50 || y > canvas.height - 180) continue;
+      
+      // 行背景
+      ctx.fillStyle = i % 2 === 0 ? '#F5F5F5' : '#E8E8E8';
+      ctx.fillRect(30, y, canvas.width - 60, rowHeight);
+      
+      // 排名
+      let rankColor = '#333';
+      if (i === 0) rankColor = '#FFD700'; // 金牌
+      else if (i === 1) rankColor = '#C0C0C0'; // 银牌
+      else if (i === 2) rankColor = '#CD7F32'; // 铜牌
+      
+      ctx.fillStyle = rankColor;
+      ctx.font = 'bold 16px Arial';
+      ctx.textAlign = 'left';
+      ctx.fillText(`#${i + 1}`, 40, y + 23);
+      
+      // 昵称
+      ctx.fillStyle = '#333';
+      ctx.font = '14px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText(item.nickname, centerX, y + 23);
+      
+      // 分数
+      ctx.fillStyle = '#FF5722';
+      ctx.font = 'bold 14px Arial';
+      ctx.textAlign = 'right';
+      ctx.fillText(String(item.score), canvas.width - 40, y + 23);
+    }
+    
+    // 返回按钮和分享按钮
+    this.renderRanklistDuringGameButtons();
+  }
+
+  renderRanklistDuringGameButtons() {
+    const centerX = canvas.width / 2;
+    const btnWidth = 120;
+    const btnHeight = 40;
+    
+    // 返回按钮
+    const backY = canvas.height - 150;
+    ctx.fillStyle = '#2196F3';
+    this.drawRoundRect(ctx, centerX - btnWidth/2, backY, btnWidth, btnHeight, 10);
+    ctx.fill();
+
+    ctx.fillStyle = '#FFF';
+    ctx.font = 'bold 18px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('← 返回', centerX, backY + 26);
+    
+    // 分享按钮
+    const shareY = canvas.height - 90;
+    ctx.fillStyle = '#4CAF50';
+    this.drawRoundRect(ctx, centerX - btnWidth/2, shareY, btnWidth, btnHeight, 10);
+    ctx.fill();
+
+    ctx.fillStyle = '#FFF';
+    ctx.font = 'bold 18px Arial';
+    ctx.fillText('🎁 分享PK', centerX, shareY + 26);
   }
 
   render() {
@@ -684,14 +969,43 @@ export default class TianganGame {
 
     this.drawSlots();
 
+    // 跳转到养羊么小程序按钮（放在排行榜按钮左边）
+    const sheepBtnX = canvas.width - 165;
+    const sheepBtnY = canvas.height - 190;
+    ctx.fillStyle = '#4CAF50';
+    this.drawRoundRect(ctx, sheepBtnX - 40, sheepBtnY - 17, 80, 35, 8);
+    ctx.fill();
+
+    ctx.fillStyle = '#FFF';
+    ctx.font = 'bold 14px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('🐑 养羊么', sheepBtnX, sheepBtnY + 5);
+
+    // 排行榜按钮（游戏进行中）- 放在槽位上方
+    const rankBtnX = canvas.width - 70;
+    const rankBtnY = canvas.height - 190;
+    ctx.fillStyle = '#FF9800';
+    this.drawRoundRect(ctx, rankBtnX - 40, rankBtnY - 17, 80, 35, 8);
+    ctx.fill();
+
+    ctx.fillStyle = '#FFF';
+    ctx.font = 'bold 16px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('排行榜', rankBtnX, rankBtnY + 5);
+
     ctx.fillStyle = '#FF5722';
     ctx.font = 'bold 28px Arial';
     ctx.textAlign = 'center';
-    ctx.fillText(`得分: ${this.score}`, canvas.width / 2, canvas.height - 175);
+    ctx.fillText(`得分: ${this.score}`, canvas.width / 2, canvas.height - 155);
 
     this.slotTiles.forEach(tile => {
       tile.render(ctx, true);
     });
+
+    // 如果游戏中正在显示排行榜
+    if (this.showRanklistDuringGame) {
+      this.renderRanklistDuringGame();
+    }
   }
 
   drawGrass() {
@@ -735,6 +1049,16 @@ export default class TianganGame {
   }
 
   drawSlotRect(ctx, x, y, width, height, radius) {
+    ctx.beginPath();
+    ctx.moveTo(x + radius, y);
+    ctx.arcTo(x + width, y, x + width, y + height, radius);
+    ctx.arcTo(x + width, y + height, x, y + height, radius);
+    ctx.arcTo(x, y + height, x, y, radius);
+    ctx.arcTo(x, y, x + width, y, radius);
+    ctx.closePath();
+  }
+
+  drawRoundRect(ctx, x, y, width, height, radius) {
     ctx.beginPath();
     ctx.moveTo(x + radius, y);
     ctx.arcTo(x + width, y, x + width, y + height, radius);

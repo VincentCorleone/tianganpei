@@ -35,8 +35,10 @@ function readLeaderboard() {
 
     if (lines.length < 2) return [];
 
-    // 跳过表头分隔线
-    const dataLines = lines.slice(1).filter(line => line.includes('|'));
+    // 跳过表头分隔线（包含 ------ 的行）
+    const dataLines = lines.slice(1).filter(line => 
+      line.includes('|') && !line.includes('------')
+    );
 
     return dataLines.map(line => {
       const parts = line.split('|').map(p => p.trim()).filter(p => p);
@@ -46,7 +48,7 @@ function readLeaderboard() {
         score: parseInt(parts[2]) || 0,
         time: parts[3] || ''
       };
-    }).filter(entry => entry.nickname && !isNaN(entry.score));
+    }).filter(entry => entry.nickname && !isNaN(entry.score) && entry.score > 0);
   } catch (e) {
     console.error('读取排行榜失败:', e);
     return [];
