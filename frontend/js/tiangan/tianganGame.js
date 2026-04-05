@@ -346,20 +346,20 @@ export default class TianganGame {
   }
 
   isValidMatch(tiles) {
-    const tianganTiles = tiles.filter(t => t.type === 'tiangan');
-    const relationTiles = tiles.filter(t => t.type === 'relation');
-
-    if (tianganTiles.length !== 2 || relationTiles.length !== 1) {
+    if (tiles.length !== 3) {
       return false;
     }
 
-    const t1 = tianganTiles[0].value;
-    const t2 = tianganTiles[1].value;
-    const rel = relationTiles[0].value;
+    const t1 = tiles[0];
+    const rel = tiles[1];
+    const t2 = tiles[2];
+
+    if (t1.type !== 'tiangan' || rel.type !== 'relation' || t2.type !== 'tiangan') {
+      return false;
+    }
 
     return (
-      (TianganRelations[t1] && TianganRelations[t1][rel] === t2) ||
-      (TianganRelations[t2] && TianganRelations[t2][rel] === t1)
+      TianganRelations[t1.value] && TianganRelations[t1.value][rel.value] === t2.value
     );
   }
 
@@ -1147,10 +1147,11 @@ export default class TianganGame {
     const rules = [
       '1. 点击顶部未被覆盖的卡牌',
       '2. 卡牌会移动到底部卡槽中',
-      '3. 集齐2个天干+1个关系即可消除得分',
-      '4. 消除一组得10分',
-      '5. 卡槽满7张且未消除则游戏结束',
-      '6. 目标：消除所有卡牌，获得高分！'
+      '3. 按【天干1-关系-天干2】顺序集齐可消除得分',
+      '4. 例如：甲-财神-己 可消除得分',
+      '5. 消除一组得10分',
+      '6. 卡槽满7张且未消除则游戏结束',
+      '7. 目标：消除所有卡牌，获得高分！'
     ];
     
     let startY = 90;
@@ -1164,7 +1165,7 @@ export default class TianganGame {
     ctx.fillStyle = '#9C27B0';
     ctx.font = 'bold 16px Arial';
     ctx.textAlign = 'center';
-    ctx.fillText('天干关系说明', centerX, 320);
+    ctx.fillText('天干关系说明', centerX, 350);
     
     ctx.fillStyle = '#FFF';
     ctx.font = '13px Arial';
@@ -1179,7 +1180,7 @@ export default class TianganGame {
     ];
     
     relations.forEach((rel, index) => {
-      ctx.fillText(rel, 30, 350 + index * lineHeight);
+      ctx.fillText(rel, 30, 380 + index * lineHeight);
     });
     
     // 返回按钮
