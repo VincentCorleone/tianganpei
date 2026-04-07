@@ -18,9 +18,16 @@ export default class TianganGame {
     this.ranklistData = [];
     this.ranklistLoading = false;
     this.ranklistError = null;
-    this.ranklistScrollY = 0; // 排行榜滚动偏移
-    this.lastTouchY = 0; // 上次触摸Y坐标
-    this.isDragging = false; // 是否正在拖动
+    this.ranklistScrollY = 0;
+    this.lastTouchY = 0;
+    this.isDragging = false;
+    
+    // 死局检测和救局系统
+    this.deadlockState = null; // null: 无死局, 'waiting': 等待换牌, 'selecting': 选择选项
+    this.rescueChances = 3; // 换牌机会
+    this.selectedTileForRescue = null; // 被选中要换的卡牌
+    this.rescueOptions = []; // 换牌选项
+    this.correctOption = null; // 正确选项
     
     // 设置微信小游戏转发
     this.setupShare();
@@ -60,6 +67,14 @@ export default class TianganGame {
     this.ranklistScrollY = 0;
     this.lastTouchY = 0;
     this.isDragging = false;
+    
+    // 重置救局系统
+    this.deadlockState = null;
+    this.rescueChances = 3;
+    this.selectedTileForRescue = null;
+    this.rescueOptions = [];
+    this.correctOption = null;
+    
     this.generateTiles();
   }
 
@@ -195,6 +210,12 @@ export default class TianganGame {
     if (this.isDragging) return;
     
     const centerX = canvas.width / 2;
+    
+    // 处理死局救局系统点击
+    if (this.deadlockState) {
+      this.handleDeadlockTouch(x, y);
+      return;
+    }
     
     // 如果游戏中正在显示排行榜
     if (this.showRanklistDuringGame) {
@@ -386,10 +407,245 @@ export default class TianganGame {
     const remainingActive = this.tiles.filter(t => !t.destroyed).length +
                             this.slotTiles.filter(t => !t.destroyed).length;
 
-    if (remainingActive === 0 || this.slotTiles.filter(t => !t.destroyed).length >= this.slotCount) {
+    // 检查是否死局
+    const remainingOnField = this.tiles.filter(t => !t.destroyed).length;
+    const remainingInSlot = this.slotTiles.filter(t => !t.destroyed).length;
+    
+    if (remainingOnField === 0 && remainingInSlot > 0 && remainingInSlot <= 6) {
+      const activeSlotTiles = this.slotTiles.filter(t => !t.destroyed);
+      if (!this.canEliminateAny(activeSlotTiles)) {
+        // 检测到死局
+        if (this.rescueChances > 0) {
+          this.startDeadlockRescue();
+          return;
+        } else {
+          // 换牌机会用完，游戏结束
+          this.gameEnded = true;
+          this.showGameOverUI();
+          return;
+        }
+      }
+    }
+
+    if (remainingActive === 0 || remainingInSlot >= this.slotCount) {
       this.gameEnded = true;
       this.showGameOverUI();
     }
+  }
+
+  canEliminateAny(tiles) {
+    if (tiles.length < 3) return false;
+    
+    for (let i = 0; i <= tiles.length - 3; i++) {
+      const triplet = tiles.slice(i, i + 3);
+      if (this.isValidMatch(triplet)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  startDeadlockRescue() {
+    this.deadlockState = 'waiting';
+    this.calculateMinRescueSteps();
+  }
+
+  calculateMinRescueSteps() {
+    const activeSlotTiles = this.slotTiles.filter(t => !t.destroyed);
+    const allTiles = this.tiles.filter(t => !t.destroyed).concat(activeSlotTiles);
+    
+    let minSteps = Infinity;
+    let bestTileIndex = -1;
+    
+    for (let i = 0; i < activeSlotTiles.length; i++) {
+      const steps = this.calculateStepsForTile(i, activeSlotTiles);
+      if (steps < minSteps) {
+        minSteps = steps;
+        bestTileIndex = i;
+      }
+    }
+    
+    if (bestTileIndex >= 0) {
+      this.selectedTileForRescue = activeSlotTiles[bestTileIndex];
+    }
+  }
+
+  calculateStepsForTile(tileIndex, slotTiles) {
+    const tile = slotTiles[tileIndex];
+    let steps = 0;
+    
+    const otherTiles = slotTiles.filter((_, i) => i !== tileIndex);
+    
+    for (let i = 0; i <= otherTiles.length - 2; i++) {
+      const testTiles = [...otherTiles.slice(0, i), tile, ...otherTiles.slice(i)];
+      if (this.canEliminateAny(testTiles)) {
+        steps = Math.abs(i - tileIndex);
+        break;
+      }
+    }
+    
+    return steps === 0 ? 1 : steps;
+  }
+
+  handleDeadlockTouch(x, y) {
+    const centerX = canvas.width / 2;
+    
+    if (this.deadlockState === 'waiting') {
+      this.handleWaitingTouch(x, y);
+    } else if (this.deadlockState === 'selecting') {
+      this.handleSelectingTouch(x, y);
+    }
+  }
+
+  handleWaitingTouch(x, y) {
+    const activeSlotTiles = this.slotTiles.filter(t => !t.destroyed);
+    
+    for (let i = 0; i < activeSlotTiles.length; i++) {
+      const tile = activeSlotTiles[i];
+      if (this.isSlotTileClicked(tile, x, y)) {
+        this.selectedTileForRescue = tile;
+        this.generateRescueOptions();
+        this.deadlockState = 'selecting';
+        return;
+      }
+    }
+  }
+
+  handleSelectingTouch(x, y) {
+    const centerX = canvas.width / 2;
+    const btnWidth = 140;
+    const btnHeight = 60;
+    const btnSpacing = 15;
+    const startX = centerX - (btnWidth * 1.5 + btnSpacing);
+    
+    for (let i = 0; i < this.rescueOptions.length; i++) {
+      const btnX = startX + i * (btnWidth + btnSpacing);
+      const btnY = 400;
+      
+      if (x >= btnX - btnWidth/2 && x <= btnX + btnWidth/2 && y >= btnY - btnHeight/2 && y <= btnY + btnHeight/2) {
+        this.handleOptionSelect(i);
+        return;
+      }
+    }
+  }
+
+  generateRescueOptions() {
+    const activeSlotTiles = this.slotTiles.filter(t => !t.destroyed);
+    const currentIndex = activeSlotTiles.indexOf(this.selectedTileForRescue);
+    
+    this.rescueOptions = [];
+    this.correctOption = -1;
+    
+    const otherTiles = activeSlotTiles.filter((_, i) => i !== currentIndex);
+    
+    let correctTargetIndex = -1;
+    for (let targetIndex = 0; targetIndex <= otherTiles.length; targetIndex++) {
+      const testTiles = [...otherTiles.slice(0, targetIndex), this.selectedTileForRescue, ...otherTiles.slice(targetIndex)];
+      if (this.canEliminateAny(testTiles) && targetIndex !== currentIndex) {
+        correctTargetIndex = targetIndex;
+        break;
+      }
+    }
+    
+    if (correctTargetIndex >= 0) {
+      this.rescueOptions.push({
+        type: 'position',
+        index: correctTargetIndex,
+        label: this.getPositionLabel(correctTargetIndex, activeSlotTiles.length),
+        correct: true
+      });
+    }
+    
+    const usedIndices = new Set([currentIndex]);
+    if (correctTargetIndex >= 0) usedIndices.add(correctTargetIndex);
+    
+    while (this.rescueOptions.length < 3) {
+      let wrongIndex;
+      let attempts = 0;
+      do {
+        wrongIndex = Math.floor(Math.random() * activeSlotTiles.length);
+        attempts++;
+      } while ((usedIndices.has(wrongIndex) || this.rescueOptions.some(opt => opt.index === wrongIndex)) && attempts < 100);
+      
+      if (attempts < 100) {
+        usedIndices.add(wrongIndex);
+        this.rescueOptions.push({
+          type: 'position',
+          index: wrongIndex,
+          label: this.getPositionLabel(wrongIndex, activeSlotTiles.length),
+          correct: false
+        });
+      } else {
+        break;
+      }
+    }
+    
+    this.shuffleArray(this.rescueOptions);
+    this.correctOption = this.rescueOptions.findIndex(opt => opt.correct);
+  }
+
+  canRescueWithPosition(targetIndex) {
+    const activeSlotTiles = this.slotTiles.filter(t => !t.destroyed);
+    const currentIndex = activeSlotTiles.indexOf(this.selectedTileForRescue);
+    const otherTiles = activeSlotTiles.filter((_, i) => i !== currentIndex);
+    const testTiles = [...otherTiles.slice(0, targetIndex), this.selectedTileForRescue, ...otherTiles.slice(targetIndex)];
+    return this.canEliminateAny(testTiles);
+  }
+
+  getPositionLabel(index, total) {
+    const labels = ['最左边', '左边第2个', '左边第3个', '左边第4个', '左边第5个', '左边第6个', '最右边'];
+    if (index === 0) return '最左边';
+    if (index === total - 1) return '最右边';
+    return labels[index] || `第${index + 1}个位置`;
+  }
+
+  handleOptionSelect(optionIndex) {
+    const option = this.rescueOptions[optionIndex];
+    
+    if (optionIndex === this.correctOption) {
+      this.performRescue(option.index);
+      wx.showToast({
+        title: '换牌成功！',
+        icon: 'success'
+      });
+    } else {
+      this.rescueChances--;
+      if (this.rescueChances > 0) {
+        wx.showToast({
+          title: `选错了，还有${this.rescueChances}次机会`,
+          icon: 'none'
+        });
+        this.deadlockState = 'waiting';
+      } else {
+        this.deadlockState = null;
+        this.gameEnded = true;
+        this.showGameOverUI();
+      }
+    }
+  }
+
+  performRescue(targetIndex) {
+    const activeSlotTiles = this.slotTiles.filter(t => !t.destroyed);
+    const currentIndex = activeSlotTiles.indexOf(this.selectedTileForRescue);
+    
+    const tile = activeSlotTiles.splice(currentIndex, 1)[0];
+    activeSlotTiles.splice(targetIndex, 0, tile);
+    
+    this.slotTiles = activeSlotTiles;
+    
+    this.rearrangeSlots();
+    
+    setTimeout(() => {
+      this.checkAndEliminate();
+      this.rearrangeSlots();
+      
+      this.deadlockState = null;
+      this.selectedTileForRescue = null;
+      this.rescueOptions = [];
+      this.correctOption = null;
+      
+      this.checkGameState();
+    }, 500);
   }
 
   showGameOverUI() {
@@ -1047,7 +1303,16 @@ export default class TianganGame {
     ctx.fillText(`得分: ${this.score}`, canvas.width / 2, canvas.height - 155);
 
     this.slotTiles.forEach(tile => {
+      const isHighlighted = this.deadlockState === 'waiting' && this.selectedTileForRescue === tile;
+      if (isHighlighted) {
+        ctx.save();
+        ctx.shadowColor = '#FFD700';
+        ctx.shadowBlur = 20;
+      }
       tile.render(ctx, true);
+      if (isHighlighted) {
+        ctx.restore();
+      }
     });
 
     // 如果游戏中正在显示排行榜
@@ -1058,6 +1323,11 @@ export default class TianganGame {
     // 如果游戏中正在显示规则
     if (this.showRulesDuringGame) {
       this.renderRulesDuringGame();
+    }
+    
+    // 如果正在死局救局状态
+    if (this.deadlockState) {
+      this.renderDeadlockRescue();
     }
   }
 
@@ -1151,7 +1421,8 @@ export default class TianganGame {
       '4. 例如：甲-财神-己 可消除得分',
       '5. 消除一组得10分',
       '6. 卡槽满7张且未消除则游戏结束',
-      '7. 目标：消除所有卡牌，获得高分！'
+      '7. 遇到死局时有3次换牌机会',
+      '8. 目标：消除所有卡牌，获得高分！'
     ];
     
     let startY = 90;
@@ -1165,7 +1436,7 @@ export default class TianganGame {
     ctx.fillStyle = '#9C27B0';
     ctx.font = 'bold 16px Arial';
     ctx.textAlign = 'center';
-    ctx.fillText('天干关系说明', centerX, 350);
+    ctx.fillText('天干关系说明', centerX, 380);
     
     ctx.fillStyle = '#FFF';
     ctx.font = '13px Arial';
@@ -1180,7 +1451,7 @@ export default class TianganGame {
     ];
     
     relations.forEach((rel, index) => {
-      ctx.fillText(rel, 30, 380 + index * lineHeight);
+      ctx.fillText(rel, 30, 410 + index * lineHeight);
     });
     
     // 返回按钮
@@ -1195,6 +1466,74 @@ export default class TianganGame {
     ctx.font = 'bold 18px Arial';
     ctx.textAlign = 'center';
     ctx.fillText('← 返回', centerX, backY + 26);
+  }
+
+  renderDeadlockRescue() {
+    const centerX = canvas.width / 2;
+    
+    ctx.fillStyle = 'rgba(0,0,0,0.8)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    if (this.deadlockState === 'waiting') {
+      this.renderWaitingState(centerX);
+    } else if (this.deadlockState === 'selecting') {
+      this.renderSelectingState(centerX);
+    }
+  }
+
+  renderWaitingState(centerX) {
+    ctx.fillStyle = '#FFD700';
+    ctx.font = 'bold 24px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('⚠️ 遇到死局了！', centerX, 80);
+    
+    ctx.fillStyle = '#FFF';
+    ctx.font = '16px Arial';
+    ctx.fillText(`剩余换牌机会：${this.rescueChances}次`, centerX, 120);
+    
+    ctx.font = '14px Arial';
+    ctx.fillText('点击下方卡槽中的一张卡牌来尝试换牌', centerX, 150);
+    
+    if (this.selectedTileForRescue) {
+      ctx.fillStyle = '#FFD700';
+      ctx.font = '14px Arial';
+      ctx.fillText('选中的卡牌会高亮显示', centerX, 180);
+    }
+  }
+
+  renderSelectingState(centerX) {
+    ctx.fillStyle = '#FFD700';
+    ctx.font = 'bold 22px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('选择要把这张牌换到哪个位置？', centerX, 100);
+    
+    ctx.fillStyle = '#FFF';
+    ctx.font = '16px Arial';
+    ctx.fillText(`剩余换牌机会：${this.rescueChances}次`, centerX, 140);
+    
+    const btnWidth = 140;
+    const btnHeight = 60;
+    const btnSpacing = 15;
+    const startX = centerX - (btnWidth * 1.5 + btnSpacing);
+    
+    for (let i = 0; i < this.rescueOptions.length; i++) {
+      const option = this.rescueOptions[i];
+      const btnX = startX + i * (btnWidth + btnSpacing);
+      const btnY = 400;
+      
+      ctx.fillStyle = option.correct ? '#4CAF50' : '#FF9800';
+      this.drawRoundRect(ctx, btnX - btnWidth/2, btnY - btnHeight/2, btnWidth, btnHeight, 12);
+      ctx.fill();
+      
+      ctx.strokeStyle = '#FFF';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+      
+      ctx.fillStyle = '#FFF';
+      ctx.font = 'bold 18px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText(option.label, btnX, btnY + 6);
+    }
   }
 
   loop() {
